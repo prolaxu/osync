@@ -37,26 +37,49 @@ final class Journal
     ) {}
 
     /**
-     * Applies [change] through [apply] and journals it, unless the record
-     * already holds a newer write. Returns that newer change when [change]
-     * lost; null when it was applied, or was this exact change resent.
+     * Applies the [changes] that beat what their records hold, in one call to
+     * [apply], and journals them under consecutive versions: one lock, one
+     * read and one bulk write for the whole batch.
      *
-     * @param  Closure(): void  $apply
+     * A change equal to what the record holds is a resend and is skipped.
+     * Returns, by record id, the newer change each losing record already held.
+     *
+     * @param  list<Change>  $changes
+     * @param  Closure(list<Change>): void  $apply
+     * @return array<string, Change>
      */
-    public function commit(string $scope, string $collection, Change $change, Closure $apply): ?Change
+    public function commitMany(string $scope, string $collection, array $changes, Closure $apply): array
     {
-        return $this->db->transaction(function () use ($scope, $collection, $change, $apply): ?Change {
-            $version = $this->lockScope($scope)->version + 1;
-            $current = $this->current($scope, $collection, $change->recordId);
+        if ($changes === []) {
+            return [];
+        }
 
-            if ($current !== null && $current->hlc->compare($change->hlc) >= 0) {
-                return (string) $current->hlc === (string) $change->hlc ? null : $current;
+        return $this->db->transaction(function () use ($scope, $collection, $changes, $apply): array {
+            $version = (int) $this->lockScope($scope)->version;
+            $held = $this->currentMany($scope, $collection, array_map(fn (Change $c): string => $c->recordId, $changes));
+
+            $winners = [];
+            $lost = [];
+            foreach ($changes as $change) {
+                $current = $winners[$change->recordId] ?? $held[$change->recordId] ?? null;
+                if ($current !== null && $current->hlc->compare($change->hlc) >= 0) {
+                    if ((string) $current->hlc !== (string) $change->hlc) {
+                        $lost[$change->recordId] = $current;
+                    }
+
+                    continue;
+                }
+                $winners[$change->recordId] = $change;
+                unset($lost[$change->recordId]);
             }
 
-            $this->quietly($apply);
-            $this->write($scope, $collection, $change, $version);
+            if ($winners !== []) {
+                $winners = array_values($winners);
+                $this->quietly(fn () => $apply($winners));
+                $this->writeMany($scope, $collection, $winners, $version);
+            }
 
-            return null;
+            return $lost;
         });
     }
 
@@ -69,7 +92,7 @@ final class Journal
     public function recordServerChange(string $scope, string $collection, string $recordId, Operation $op, ?array $data): Change
     {
         return $this->db->transaction(function () use ($scope, $collection, $recordId, $op, $data): Change {
-            $version = $this->lockScope($scope)->version + 1;
+            $version = (int) $this->lockScope($scope)->version;
             $current = $this->current($scope, $collection, $recordId);
             $change = new Change(
                 recordId: $recordId,
@@ -77,7 +100,7 @@ final class Journal
                 data: $op === Operation::Upsert ? ($data ?? []) : null,
                 hlc: Hlc::next($this->node, Carbon::now()->getTimestampMs(), $current?->hlc),
             );
-            $this->write($scope, $collection, $change, $version);
+            $this->writeMany($scope, $collection, [$change], $version);
 
             return $change;
         });
@@ -94,6 +117,27 @@ final class Journal
         return $row === null ? null : $this->toChange($row);
     }
 
+    /**
+     * @param  list<string>  $recordIds
+     * @return array<string, Change> by record id
+     */
+    public function currentMany(string $scope, string $collection, array $recordIds): array
+    {
+        $held = [];
+        foreach (array_chunk(array_values(array_unique($recordIds)), 500) as $chunk) {
+            $this->db->table(self::CHANGES)
+                ->where('scope', $scope)
+                ->where('collection', $collection)
+                ->whereIn('record_id', $chunk)
+                ->get(['record_id', 'op', 'data', 'hlc'])
+                ->each(function (stdClass $row) use (&$held): void {
+                    $held[$row->record_id] = $this->toChange($row);
+                });
+        }
+
+        return $held;
+    }
+
     /** @return list<array{version: int, change: Change}> oldest first */
     public function changesSince(string $scope, string $collection, int $cursor, int $limit): array
     {
@@ -103,7 +147,7 @@ final class Journal
             ->where('version', '>', $cursor)
             ->orderBy('version')
             ->limit($limit)
-            ->get()
+            ->get(['record_id', 'version', 'op', 'data', 'hlc'])
             ->map(fn (stdClass $row): array => ['version' => (int) $row->version, 'change' => $this->toChange($row)])
             ->values()
             ->all();
@@ -183,23 +227,38 @@ final class Journal
         return $row;
     }
 
-    private function write(string $scope, string $collection, Change $change, int $version): void
+    /**
+     * Stores [changes] under the versions after [afterVersion], replacing each
+     * record's previous change, and moves the scope's counter to the last one.
+     *
+     * @param  list<Change>  $changes
+     */
+    private function writeMany(string $scope, string $collection, array $changes, int $afterVersion): void
     {
-        $this->db->table(self::SCOPES)->where('scope', $scope)->update(['version' => $version]);
-        $this->db->table(self::CHANGES)->upsert(
-            [[
+        $now = Carbon::now();
+        $version = $afterVersion;
+        $rows = [];
+        foreach ($changes as $change) {
+            $rows[] = [
                 'scope' => $scope,
                 'collection' => $collection,
                 'record_id' => $change->recordId,
-                'version' => $version,
+                'version' => ++$version,
                 'op' => $change->op->value,
-                'data' => $change->data === null ? null : json_encode($change->data, JSON_THROW_ON_ERROR),
+                'data' => $change->data === null ? null : json_encode($change->data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
                 'hlc' => (string) $change->hlc,
-                'created_at' => Carbon::now(),
-            ]],
-            ['scope', 'collection', 'record_id'],
-            ['version', 'op', 'data', 'hlc', 'created_at'],
-        );
+                'created_at' => $now,
+            ];
+        }
+
+        foreach (array_chunk($rows, 200) as $chunk) {
+            $this->db->table(self::CHANGES)->upsert(
+                $chunk,
+                ['scope', 'collection', 'record_id'],
+                ['version', 'op', 'data', 'hlc', 'created_at'],
+            );
+        }
+        $this->db->table(self::SCOPES)->where('scope', $scope)->update(['version' => $version]);
     }
 
     private function toChange(stdClass $row): Change

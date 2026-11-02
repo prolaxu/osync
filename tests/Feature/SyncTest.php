@@ -1,7 +1,10 @@
 <?php
 
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
+use Nepicsoft\Osync\CollectionRegistry;
+use Nepicsoft\Osync\Tests\Fixtures\BulkNoteCollection;
 use Nepicsoft\Osync\Tests\Fixtures\Mantra;
 use Nepicsoft\Osync\Tests\Fixtures\Note;
 use Nepicsoft\Osync\Tests\Fixtures\User;
@@ -36,7 +39,7 @@ it('stores a pushed record and hands it back with a cursor', function () {
         ->cursor->toBe(1)
         ->reset->toBeFalse()
         ->has_more->toBeFalse()
-        ->rejected->toBe([])
+        ->not->toHaveKey('rejected')
         ->and($response->json('collections.notes.changes.0'))->toMatchArray([
             'id' => 'n1', 'op' => 'upsert', 'hlc' => stamp(1000), 'data' => ['title' => 'Kundali notes'],
         ])
@@ -82,7 +85,7 @@ it('treats a resent change as already applied', function () {
     $retry = syncAs($this->user, ['notes' => ['cursor' => 1, 'changes' => [$change]]]);
 
     expect($retry->json('collections.notes'))
-        ->rejected->toBe([])
+        ->not->toHaveKey('rejected')
         ->changes->toBe([])
         ->cursor->toBe(1);
 });
@@ -93,7 +96,7 @@ it('syncs a delete as a tombstone and lets a newer write bring the record back',
         ['id' => 'n1', 'op' => 'delete', 'hlc' => stamp(1100)],
     ]]]);
 
-    expect($deleted->json('collections.notes.changes.0'))->toMatchArray(['id' => 'n1', 'op' => 'delete', 'data' => null])
+    expect($deleted->json('collections.notes.changes.0'))->toBe(['id' => 'n1', 'op' => 'delete', 'hlc' => stamp(1100)])
         ->and(Note::count())->toBe(0)
         ->and(Note::withTrashed()->count())->toBe(1);
 
@@ -213,4 +216,110 @@ it('answers unknown collections, bad envelopes and guests', function () {
 
     auth()->logout();
     $this->postJson('/api/sync', ['protocol' => 1, 'collections' => ['notes' => []]])->assertUnauthorized();
+});
+
+it('leaves a device\'s own changes out of its pulls', function () {
+    $push = fn (int $cursor, array $changes = []) => $this->actingAs($this->user)->postJson('/api/sync', [
+        'protocol' => 1,
+        'node' => 'phone-a',
+        'collections' => ['notes' => ['cursor' => $cursor, 'changes' => $changes]],
+    ])->json('collections.notes');
+
+    $push(0, [upsert('base', ['title' => 'Base'], stamp(900, 'phone-b'))]);
+    $first = $push(1, [upsert('mine', ['title' => 'Mine'], stamp(1000))]);
+    expect($first['changes'])->toBe([])->and($first['cursor'])->toBe(2);
+
+    syncAs($this->user, ['notes' => ['changes' => [upsert('theirs', ['title' => 'Theirs'], stamp(1100, 'phone-b'))]]]);
+    expect(array_column($push(2)['changes'], 'id'))->toBe(['theirs'])
+        ->and(array_column($push(0)['changes'], 'id'))->toBe(['base', 'theirs']);
+});
+
+it('sends a device its own changes back after a reset', function () {
+    $sync = fn (int $cursor, array $changes = []) => $this->actingAs($this->user)->postJson('/api/sync', [
+        'protocol' => 1,
+        'node' => 'phone-a',
+        'collections' => ['notes' => ['cursor' => $cursor, 'changes' => $changes]],
+    ])->json('collections.notes');
+
+    $sync(0, [upsert('mine', ['title' => 'Mine'], stamp(1000)), upsert('gone', ['title' => 'Gone'], stamp(1001))]);
+    $sync(2, [['id' => 'gone', 'op' => 'delete', 'hlc' => stamp(1002)]]);
+    Carbon::setTestNow(Carbon::now()->addDays(91));
+    $this->artisan('osync:prune')->assertSuccessful();
+
+    $pull = $sync(1);
+    expect($pull['reset'])->toBeTrue()->and(array_column($pull['changes'], 'id'))->toBe(['mine']);
+    Carbon::setTestNow();
+});
+
+it('commits a pushed batch in a fixed number of journal queries', function () {
+    $changes = fn (int $n, int $from) => array_map(
+        fn (int $i) => upsert("n{$i}", ['title' => "Note {$i}"], stamp($from + $i)),
+        range(1, $n),
+    );
+
+    $count = function (array $batch): int {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        syncAs($this->user, ['notes' => ['changes' => $batch]]);
+        $journal = collect(DB::getQueryLog())->filter(fn (array $q) => str_contains($q['query'], 'osync_'))->count();
+        DB::disableQueryLog();
+
+        return $journal;
+    };
+
+    expect($count($changes(10, 1000)))->toBe($count($changes(200, 5000)));
+});
+
+it('writes a batch in bulk when the collection asks for it', function () {
+    config(['osync.collections' => [BulkNoteCollection::class]]);
+    app()->forgetInstance(CollectionRegistry::class);
+
+    syncAs($this->user, ['notes' => ['changes' => [
+        upsert('a', ['title' => 'A', 'body' => 'one'], stamp(1000)),
+        upsert('b', ['title' => 'B'], stamp(1001)),
+    ]]])->assertOk();
+    syncAs($this->user, ['notes' => ['cursor' => 2, 'changes' => [
+        upsert('a', ['title' => 'A2'], stamp(1100)),
+        ['id' => 'b', 'op' => 'delete', 'hlc' => stamp(1101)],
+    ]]])->assertOk();
+
+    expect(Note::where('sync_id', 'a')->first())
+        ->title->toBe('A2')
+        ->body->toBe('one')
+        ->and(Note::where('sync_id', 'b')->exists())->toBeFalse()
+        ->and(Note::withTrashed()->where('sync_id', 'b')->exists())->toBeTrue();
+
+    syncAs($this->user, ['notes' => ['cursor' => 4, 'changes' => [upsert('b', ['title' => 'B back'], stamp(1200))]]]);
+    expect(Note::where('sync_id', 'b')->value('title'))->toBe('B back');
+});
+
+it('takes gzipped requests and gzips large responses', function () {
+    $changes = array_map(fn (int $i) => upsert("n{$i}", ['title' => "Note {$i}"], stamp(1000 + $i)), range(1, 40));
+    $body = gzencode(json_encode(['protocol' => 1, 'collections' => ['notes' => ['cursor' => 0, 'changes' => $changes]]]));
+
+    $this->actingAs($this->user)->call('POST', '/api/sync', server: [
+        'CONTENT_TYPE' => 'application/json',
+        'HTTP_CONTENT_ENCODING' => 'gzip',
+        'HTTP_ACCEPT' => 'application/json',
+    ], content: $body)->assertOk();
+    expect(Note::count())->toBe(40);
+
+    $pull = $this->actingAs($this->user)->call('POST', '/api/sync', server: [
+        'CONTENT_TYPE' => 'application/json',
+        'HTTP_ACCEPT' => 'application/json',
+        'HTTP_ACCEPT_ENCODING' => 'gzip, deflate',
+    ], content: json_encode(['protocol' => 1, 'collections' => ['notes' => ['cursor' => 0]]]));
+
+    $plain = gzdecode($pull->getContent());
+    expect($pull->headers->get('Content-Encoding'))->toBe('gzip')
+        ->and(strlen($pull->getContent()))->toBeLessThan(strlen($plain) / 3)
+        ->and(json_decode($plain, true)['collections']['notes']['changes'])->toHaveCount(40);
+});
+
+it('refuses a gzip body that is not gzip', function () {
+    $this->actingAs($this->user)->call('POST', '/api/sync', server: [
+        'CONTENT_TYPE' => 'application/json',
+        'HTTP_CONTENT_ENCODING' => 'gzip',
+        'HTTP_ACCEPT' => 'application/json',
+    ], content: 'not gzip')->assertStatus(400);
 });

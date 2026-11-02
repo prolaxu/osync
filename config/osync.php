@@ -11,6 +11,10 @@ return [
         'middleware' => ['api', 'auth:sanctum'],
     ],
 
+    // Gzip request and response bodies on the sync route. Turn off only when
+    // the web server already compresses application/json both ways.
+    'compression' => true,
+
     // Database connection for the journal; null uses the default.
     'connection' => null,
 

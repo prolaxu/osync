@@ -2,7 +2,7 @@
 
 namespace Nepicsoft\Osync\Data;
 
-/** The server's answer for one collection. */
+/** The server's answer for one collection; `rejected` is left out when empty. */
 final readonly class CollectionResult
 {
     /**
@@ -20,12 +20,16 @@ final readonly class CollectionResult
     /** @return array<string, mixed> */
     public function toArray(): array
     {
-        return [
+        $array = [
             'cursor' => $this->cursor,
             'reset' => $this->reset,
             'has_more' => $this->hasMore,
             'changes' => array_map(fn (Change $c): array => $c->toArray(), $this->changes),
-            'rejected' => array_map(fn (Rejection $r): array => $r->toArray(), $this->rejected),
         ];
+        if ($this->rejected !== []) {
+            $array['rejected'] = array_map(fn (Rejection $r): array => $r->toArray(), $this->rejected);
+        }
+
+        return $array;
     }
 }

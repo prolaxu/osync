@@ -15,7 +15,7 @@ final class SyncController
     public function __invoke(SyncRequest $request, SyncEngine $engine): JsonResponse
     {
         try {
-            $results = $engine->sync($request->user(), $request->pushes());
+            $results = $engine->sync($request->user(), $request->pushes(), $request->node());
         } catch (UnknownCollection $e) {
             return response()->json(['message' => $e->getMessage(), 'collection' => $e->collection], 422);
         } catch (ScopeDenied $e) {

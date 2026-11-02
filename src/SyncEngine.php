@@ -17,10 +17,13 @@ use Nepicsoft\Osync\Exceptions\ScopeDenied;
  * One sync round for one user: apply what the device pushed, then hand back
  * everything in each collection's journal past the device's cursor.
  *
- * Pushing before pulling means a device's own accepted writes come back in the
- * same response with the stamps it sent; the client recognises them as already
- * applied. A write that lost to a newer one is rejected with the winner
- * attached, so the device converges even when its cursor is already past it.
+ * A collection's push commits as one batch. A write that lost to a newer one
+ * is rejected with the winner attached, so the device converges even when its
+ * cursor is already past it. When the device names its node, the pull leaves
+ * out changes that came from that node — it wrote them, so sending them back
+ * would only cost bandwidth — except on a reset, after which the device has
+ * dropped its synced records and needs every one. A reinstalled app has a new
+ * node, so it gets its old changes back like anyone else's.
  */
 final readonly class SyncEngine
 {
@@ -35,64 +38,90 @@ final readonly class SyncEngine
      * @param  list<CollectionPush>  $pushes
      * @return array<string, CollectionResult>
      */
-    public function sync(?Authenticatable $user, array $pushes): array
+    public function sync(?Authenticatable $user, array $pushes, ?string $node = null): array
     {
         $results = [];
+        $compacted = [];
         foreach ($pushes as $push) {
             $collection = $this->collections->get($push->name);
             $scope = $collection->scope($user) ?? throw new ScopeDenied($push->name);
 
-            $rejected = [];
-            foreach ($push->changes as $change) {
-                $rejection = $this->apply($collection, $scope, $change);
-                if ($rejection !== null) {
-                    $rejected[] = $rejection;
-                }
-            }
-
-            $results[$push->name] = $this->pull($collection, $scope, $push->cursor, $rejected);
+            $rejected = $this->push($collection, $scope, $push->changes);
+            $compacted[$scope] ??= $this->journal->compactedThrough($scope);
+            $results[$push->name] = $this->pull($collection, $scope, $push->cursor, $compacted[$scope], $node, $rejected);
         }
 
         return $results;
     }
 
-    private function apply(SyncCollection $collection, string $scope, Change $change): ?Rejection
+    /**
+     * @param  list<Change>  $changes
+     * @return list<Rejection>
+     */
+    private function push(SyncCollection $collection, string $scope, array $changes): array
     {
+        if ($changes === []) {
+            return [];
+        }
         if (! $collection->writable()) {
-            return new Rejection($change->recordId, (string) $change->hlc, RejectionReason::ReadOnly);
+            return array_map(fn (Change $c): Rejection => new Rejection($c->recordId, (string) $c->hlc, RejectionReason::ReadOnly), $changes);
         }
 
-        if ($change->op === Operation::Upsert) {
-            $validation = $this->validator->make($change->data ?? [], $collection->rules());
-            if ($validation->fails()) {
-                return new Rejection($change->recordId, (string) $change->hlc, RejectionReason::Invalid, errors: $validation->errors()->toArray());
+        $rejected = [];
+        $accepted = [];
+        $rules = $collection->rules();
+        foreach ($changes as $change) {
+            if ($change->op === Operation::Delete) {
+                $accepted[] = $change;
+
+                continue;
             }
-            $change = new Change($change->recordId, $change->op, $validation->validated(), $change->hlc);
+            $validation = $this->validator->make($change->data ?? [], $rules);
+            if ($validation->fails()) {
+                $rejected[] = new Rejection($change->recordId, (string) $change->hlc, RejectionReason::Invalid, errors: $validation->errors()->toArray());
+
+                continue;
+            }
+            $accepted[] = new Change($change->recordId, $change->op, $validation->validated(), $change->hlc);
         }
 
-        $winner = $this->journal->commit($scope, $collection->name(), $change, fn () => match ($change->op) {
-            Operation::Upsert => $collection->upsert($scope, $change->recordId, $change->data ?? []),
-            Operation::Delete => $collection->delete($scope, $change->recordId),
-        });
+        $lost = $this->journal->commitMany(
+            $scope,
+            $collection->name(),
+            $accepted,
+            fn (array $winners) => $collection->apply($scope, $winners),
+        );
+        foreach ($accepted as $change) {
+            $winner = $lost[$change->recordId] ?? null;
+            if ($winner !== null) {
+                $rejected[] = new Rejection($change->recordId, (string) $change->hlc, RejectionReason::Stale, current: $winner);
+            }
+        }
 
-        return $winner === null
-            ? null
-            : new Rejection($change->recordId, (string) $change->hlc, RejectionReason::Stale, current: $winner);
+        return $rejected;
     }
 
     /** @param  list<Rejection>  $rejected */
-    private function pull(SyncCollection $collection, string $scope, int $cursor, array $rejected): CollectionResult
+    private function pull(SyncCollection $collection, string $scope, int $cursor, int $compactedThrough, ?string $node, array $rejected): CollectionResult
     {
-        $reset = $cursor > 0 && $cursor < $this->journal->compactedThrough($scope);
+        $reset = $cursor > 0 && $cursor < $compactedThrough;
         $from = $reset ? 0 : $cursor;
 
         $rows = $this->journal->changesSince($scope, $collection->name(), $from, $this->pageSize + 1);
         $hasMore = count($rows) > $this->pageSize;
         $rows = array_slice($rows, 0, $this->pageSize);
 
+        $changes = [];
+        $echo = ! $reset && $node !== null ? ':'.$node : null;
+        foreach ($rows as ['change' => $change]) {
+            if ($echo === null || ! str_ends_with((string) $change->hlc, $echo)) {
+                $changes[] = $change;
+            }
+        }
+
         return new CollectionResult(
             cursor: $rows === [] ? $from : $rows[array_key_last($rows)]['version'],
-            changes: array_column($rows, 'change'),
+            changes: $changes,
             hasMore: $hasMore,
             reset: $reset,
             rejected: $rejected,

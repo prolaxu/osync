@@ -29,14 +29,14 @@ final readonly class Change
         );
     }
 
-    /** @return array{id: string, op: string, hlc: string, data: array<string, mixed>|null} */
+    /** @return array{id: string, op: string, hlc: string, data?: array<string, mixed>} a delete carries no data key */
     public function toArray(): array
     {
-        return [
-            'id' => $this->recordId,
-            'op' => $this->op->value,
-            'hlc' => (string) $this->hlc,
-            'data' => $this->data,
-        ];
+        $array = ['id' => $this->recordId, 'op' => $this->op->value, 'hlc' => (string) $this->hlc];
+        if ($this->data !== null) {
+            $array['data'] = $this->data;
+        }
+
+        return $array;
     }
 }

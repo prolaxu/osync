@@ -10,7 +10,7 @@ Server, in the Laravel app's `composer.json`:
 
 ```json
 "repositories": [{ "type": "vcs", "url": "https://github.com/prolaxu/osync" }],
-"require": { "nepicsoft/osync": "^0.1" }
+"require": { "nepicsoft/osync": "^0.3" }
 ```
 
 Then `php artisan migrate`.
@@ -30,6 +30,27 @@ Then `php artisan migrate`.
 - **Small journal.** Only a record's latest change is kept, so the journal stays about as large as the data, and a pull from cursor 0 is a full snapshot.
 - **Works with osync-dart.** The client keeps a SQLite store with an outbox and handles background syncing; see [osync-dart](https://github.com/prolaxu/osync-dart).
 
+## Efficiency
+
+Measured with the package's benchmark (`vendor/bin/pest --group=bench`), one device pushing 500 changes:
+
+| | v0.2 | now |
+|---|---|---|
+| Queries for the push | 3,501 | **12** with `$bulk`, 510 with per-model saves |
+| Time for the push | 932 ms | **131 ms** with `$bulk` |
+| Push response | 71 KB (every change sent back) | **125 bytes** |
+| 500-change pull on the wire | 71 KB | **4.3 KB** gzipped |
+| A sync with nothing new | 2 queries | 2 queries |
+
+How:
+- **One batch per push.** A collection's whole push commits under one scope lock: one read of what the records hold, one bulk journal upsert per 200 changes, and one counter update.
+- **No echo.** The device sends its HLC node, and its pull leaves out changes that came from that node. The device wrote them, so it already has them. After a `reset` the device gets everything, its own changes included.
+- **Bulk writes.** `protected bool $bulk = true;` on an `EloquentCollection` writes a batch with a few `upsert`/`update` statements instead of one model save per record. It skips model events and casts, so use it when the payload maps straight onto columns, and give the table a unique index on (`sync_scope`, `sync_id`). Partial payloads only touch the columns they name.
+- **Gzip both ways.** Gzipped request bodies are inflated (capped at 32 MB), and responses over 1 KB are gzipped when the client accepts it. Turn it off with `'compression' => false` if the web server already does both.
+- **Cheap envelope checks.** The envelope is checked by hand, which costs microseconds a change; Laravel's wildcard rules took 186 ms for 500. Only each collection's own `rules()` go through the validator.
+- **Lean JSON.** Deletes carry no `data` key, and `rejected` is left out when empty.
+- **Indexed reads.** Pulls read `(scope, collection, version)` through an index and select only the columns they send.
+
 ## Protocol (v1)
 
 `POST /api/sync` with any auth middleware you configure.
@@ -38,6 +59,7 @@ Then `php artisan migrate`.
 // request
 {
   "protocol": 1,
+  "node": "dk3j…",            // optional: this device's HLC node, so its own changes are not sent back
   "collections": {
     "notes": {
       "cursor": 41,
@@ -65,7 +87,7 @@ Then `php artisan migrate`.
 }
 ```
 
-An HLC is `<15-digit ms>:<5-digit counter>:<node>`. It is fixed-width up to the node, so string order is clock order on both sides. `reason` is `stale` (with `current`), `invalid` (with `errors`) or `read_only`.
+An HLC is `<15-digit ms>:<5-digit counter>:<node>`. It is fixed-width up to the node, so string order is clock order on both sides. `reason` is `stale` (with `current`), `invalid` (with `errors`) or `read_only`. A delete has no `data` key, and `rejected` is absent when empty. Bodies may be gzipped (`Content-Encoding: gzip`) in either direction.
 
 ## Server
 
@@ -100,6 +122,8 @@ final class ChartCollection extends EloquentCollection
 ```
 
 Content devices only read: override `writable()` to return `false` and set `scope()` to `'global'`.
+For tables whose payload is plain columns, add `protected bool $bulk = true;` (see Efficiency).
+A custom `SyncCollection` gets each push as one `apply($scope, $changes)` call.
 Schedule `osync:prune` daily.
 
 Mass `update()`/`delete()` on the query builder fire no model events and are **not** journalled. Change records through models, or call `Journal::recordServerChange()`.
@@ -107,7 +131,8 @@ Mass `update()`/`delete()` on the query builder fire no model events and are **n
 ## Tests
 
 ```sh
-composer install && vendor/bin/pest                     # 21 tests
+composer install && vendor/bin/pest                     # 27 tests
+vendor/bin/pest --group=bench                           # the numbers above
 ```
 
 `workbench/` is a throwaway server for osync-dart's end-to-end tests: the bearer token is the user's name, and two routes edit records the way a website would.

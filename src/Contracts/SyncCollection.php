@@ -3,6 +3,7 @@
 namespace Nepicsoft\Osync\Contracts;
 
 use Illuminate\Contracts\Auth\Authenticatable;
+use Nepicsoft\Osync\Data\Change;
 
 /**
  * A set of records that syncs as one stream, e.g. a user's saved charts or the
@@ -26,8 +27,11 @@ interface SyncCollection
     /** @return array<string, mixed> Laravel validation rules for an upsert's data */
     public function rules(): array;
 
-    /** @param  array<string, mixed>  $data */
-    public function upsert(string $scope, string $recordId, array $data): void;
-
-    public function delete(string $scope, string $recordId): void;
+    /**
+     * Writes accepted changes into the app's tables: at most one per record,
+     * upserts carrying validated data, all inside the journal's transaction.
+     *
+     * @param  list<Change>  $changes
+     */
+    public function apply(string $scope, array $changes): void;
 }

@@ -5,8 +5,11 @@ namespace Nepicsoft\Osync;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 use Nepicsoft\Osync\Concerns\Syncable;
 use Nepicsoft\Osync\Contracts\SyncCollection;
+use Nepicsoft\Osync\Data\Change;
+use Nepicsoft\Osync\Enums\Operation;
 
 /**
  * A collection backed by one Eloquent model that uses [Syncable].
@@ -14,9 +17,16 @@ use Nepicsoft\Osync\Contracts\SyncCollection;
  * Client data is written through [attributes] and server edits are journalled
  * through the model's [Syncable::toSyncPayload]; override both together when
  * the wire shape differs from the columns.
+ *
+ * Writes load every record of a batch in one query, then save each model, so
+ * casts, mutators and model events behave as usual. Set [bulk] for tables
+ * whose payload maps straight onto columns: a batch then lands in a few
+ * statements, skipping models, and needs a unique index on (scope, id).
  */
 abstract class EloquentCollection implements SyncCollection
 {
+    protected bool $bulk = false;
+
     /** @return class-string<Model> */
     abstract protected function model(): string;
 
@@ -30,22 +40,9 @@ abstract class EloquentCollection implements SyncCollection
         return true;
     }
 
-    public function upsert(string $scope, string $recordId, array $data): void
+    public function apply(string $scope, array $changes): void
     {
-        $model = $this->find($scope, $recordId) ?? $this->instance()->newInstance();
-        $model->fill($this->attributes($data));
-        $model->setAttribute($model->syncScopeColumn(), $scope);
-        $model->setAttribute($model->syncIdColumn(), $recordId);
-
-        if ($this->usesSoftDeletes() && $model->exists && $model->trashed()) {
-            $model->restore();
-        }
-        $model->save();
-    }
-
-    public function delete(string $scope, string $recordId): void
-    {
-        $this->find($scope, $recordId)?->delete();
+        $this->bulk ? $this->applyBulk($scope, $changes) : $this->applyModels($scope, $changes);
     }
 
     /**
@@ -59,20 +56,109 @@ abstract class EloquentCollection implements SyncCollection
         return $data;
     }
 
-    /** @return Model&Syncable */
-    private function find(string $scope, string $recordId): ?Model
+    /** @param  list<Change>  $changes */
+    private function applyModels(string $scope, array $changes): void
     {
-        $model = $this->instance();
-        /** @var Builder<Model> $query */
-        $query = $model->newQuery();
-        if ($this->usesSoftDeletes()) {
-            $query->withTrashed();
+        $template = $this->instance();
+        $idColumn = $template->syncIdColumn();
+        $existing = $this->query($scope)
+            ->whereIn($idColumn, array_map(fn (Change $c): string => $c->recordId, $changes))
+            ->get()
+            ->keyBy($idColumn);
+
+        foreach ($changes as $change) {
+            /** @var (Model&Syncable)|null $model */
+            $model = $existing->get($change->recordId);
+
+            if ($change->op === Operation::Delete) {
+                $model?->delete();
+
+                continue;
+            }
+
+            $model ??= $template->newInstance();
+            $model->fill($this->attributes($change->data ?? []));
+            $model->setAttribute($template->syncScopeColumn(), $scope);
+            $model->setAttribute($idColumn, $change->recordId);
+            if ($this->usesSoftDeletes() && $model->exists && $model->trashed()) {
+                $model->setAttribute($model->getDeletedAtColumn(), null);
+            }
+            $model->save();
+        }
+    }
+
+    /** @param  list<Change>  $changes */
+    private function applyBulk(string $scope, array $changes): void
+    {
+        $template = $this->instance();
+        $scopeColumn = $template->syncScopeColumn();
+        $idColumn = $template->syncIdColumn();
+        $now = Carbon::now();
+
+        $upserts = [];
+        $deletes = [];
+        foreach ($changes as $change) {
+            if ($change->op === Operation::Delete) {
+                $deletes[] = $change->recordId;
+
+                continue;
+            }
+            $row = array_map(
+                fn (mixed $value): mixed => is_array($value) ? json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) : $value,
+                $this->attributes($change->data ?? []),
+            );
+            $row[$scopeColumn] = $scope;
+            $row[$idColumn] = $change->recordId;
+            if ($template->usesTimestamps()) {
+                $row[$template->getCreatedAtColumn()] = $now;
+                $row[$template->getUpdatedAtColumn()] = $now;
+            }
+            if ($this->usesSoftDeletes()) {
+                $row[$template->getDeletedAtColumn()] = null;
+            }
+            $upserts[] = $row;
         }
 
-        return $query
-            ->where($model->syncScopeColumn(), $scope)
-            ->where($model->syncIdColumn(), $recordId)
-            ->first();
+        foreach ($this->sameShape($upserts) as $rows) {
+            $update = array_values(array_diff(array_keys($rows[0]), [$scopeColumn, $idColumn, $template->getCreatedAtColumn()]));
+            foreach (array_chunk($rows, 200) as $chunk) {
+                $template->newQuery()->toBase()->upsert($chunk, [$scopeColumn, $idColumn], $update);
+            }
+        }
+
+        foreach (array_chunk($deletes, 500) as $chunk) {
+            $query = $template->newQuery()->toBase()->where($scopeColumn, $scope)->whereIn($idColumn, $chunk);
+            $this->usesSoftDeletes()
+                ? $query->update([$template->getDeletedAtColumn() => $now])
+                : $query->delete();
+        }
+    }
+
+    /**
+     * Groups rows by their column set: one upsert statement needs every row
+     * to name the same columns, and partial payloads must not null the rest.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<list<array<string, mixed>>>
+     */
+    private function sameShape(array $rows): array
+    {
+        $groups = [];
+        foreach ($rows as $row) {
+            ksort($row);
+            $groups[implode(',', array_keys($row))][] = $row;
+        }
+
+        return array_values($groups);
+    }
+
+    /** @return Builder<Model> */
+    private function query(string $scope): Builder
+    {
+        $model = $this->instance();
+        $query = $model->newQuery()->where($model->syncScopeColumn(), $scope);
+
+        return $this->usesSoftDeletes() ? $query->withTrashed() : $query;
     }
 
     /** @return Model&Syncable */

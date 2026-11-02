@@ -5,7 +5,7 @@ namespace Nepicsoft\Osync\Tests\Fixtures;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Nepicsoft\Osync\EloquentCollection;
 
-final class NoteCollection extends EloquentCollection
+class NoteCollection extends EloquentCollection
 {
     protected function model(): string
     {
