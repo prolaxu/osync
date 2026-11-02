@@ -1,6 +1,6 @@
 <?php
 
-namespace Nepicsoft\Osync\Exceptions;
+namespace Prolaxu\Osync\Exceptions;
 
 use RuntimeException;
 

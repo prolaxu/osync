@@ -1,12 +1,12 @@
 <?php
 
-namespace Nepicsoft\Osync\Concerns;
+namespace Prolaxu\Osync\Concerns;
 
 use Illuminate\Container\Container;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
-use Nepicsoft\Osync\Enums\Operation;
-use Nepicsoft\Osync\Journal;
+use Prolaxu\Osync\Enums\Operation;
+use Prolaxu\Osync\Journal;
 
 /**
  * Journals every save and delete of the model, so edits made on the server —

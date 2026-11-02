@@ -8,11 +8,11 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
-use Nepicsoft\Osync\Tests\Fixtures\Mantra;
-use Nepicsoft\Osync\Tests\Fixtures\MantraCollection;
-use Nepicsoft\Osync\Tests\Fixtures\Note;
-use Nepicsoft\Osync\Tests\Fixtures\NoteCollection;
-use Nepicsoft\Osync\Tests\Fixtures\User;
+use Prolaxu\Osync\Tests\Fixtures\Mantra;
+use Prolaxu\Osync\Tests\Fixtures\MantraCollection;
+use Prolaxu\Osync\Tests\Fixtures\Note;
+use Prolaxu\Osync\Tests\Fixtures\NoteCollection;
+use Prolaxu\Osync\Tests\Fixtures\User;
 
 /**
  * A throwaway server for the Dart client's end-to-end test: the bearer token

@@ -3,9 +3,9 @@
 // Numbers, not checks: vendor/bin/pest --group=bench
 
 use Illuminate\Support\Facades\DB;
-use Nepicsoft\Osync\CollectionRegistry;
-use Nepicsoft\Osync\Tests\Fixtures\BulkNoteCollection;
-use Nepicsoft\Osync\Tests\Fixtures\User;
+use Prolaxu\Osync\CollectionRegistry;
+use Prolaxu\Osync\Tests\Fixtures\BulkNoteCollection;
+use Prolaxu\Osync\Tests\Fixtures\User;
 
 it('bench', function () {
     $user = User::create(['name' => 'bench']);

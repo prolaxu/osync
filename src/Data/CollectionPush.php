@@ -1,6 +1,6 @@
 <?php
 
-namespace Nepicsoft\Osync\Data;
+namespace Prolaxu\Osync\Data;
 
 /** What a client sends for one collection: where its pull stopped, and its local writes. */
 final readonly class CollectionPush

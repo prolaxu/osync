@@ -1,17 +1,17 @@
 <?php
 
-namespace Nepicsoft\Osync;
+namespace Prolaxu\Osync;
 
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Validation\Factory as ValidationFactory;
-use Nepicsoft\Osync\Contracts\SyncCollection;
-use Nepicsoft\Osync\Data\Change;
-use Nepicsoft\Osync\Data\CollectionPush;
-use Nepicsoft\Osync\Data\CollectionResult;
-use Nepicsoft\Osync\Data\Rejection;
-use Nepicsoft\Osync\Enums\Operation;
-use Nepicsoft\Osync\Enums\RejectionReason;
-use Nepicsoft\Osync\Exceptions\ScopeDenied;
+use Prolaxu\Osync\Contracts\SyncCollection;
+use Prolaxu\Osync\Data\Change;
+use Prolaxu\Osync\Data\CollectionPush;
+use Prolaxu\Osync\Data\CollectionResult;
+use Prolaxu\Osync\Data\Rejection;
+use Prolaxu\Osync\Enums\Operation;
+use Prolaxu\Osync\Enums\RejectionReason;
+use Prolaxu\Osync\Exceptions\ScopeDenied;
 
 /**
  * One sync round for one user: apply what the device pushed, then hand back

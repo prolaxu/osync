@@ -1,6 +1,6 @@
 <?php
 
-namespace Nepicsoft\Osync\Tests\Fixtures;
+namespace Prolaxu\Osync\Tests\Fixtures;
 
 final class BulkNoteCollection extends NoteCollection
 {

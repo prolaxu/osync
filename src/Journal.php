@@ -1,12 +1,12 @@
 <?php
 
-namespace Nepicsoft\Osync;
+namespace Prolaxu\Osync;
 
 use Closure;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Carbon;
-use Nepicsoft\Osync\Data\Change;
-use Nepicsoft\Osync\Enums\Operation;
+use Prolaxu\Osync\Data\Change;
+use Prolaxu\Osync\Enums\Operation;
 use stdClass;
 
 /**

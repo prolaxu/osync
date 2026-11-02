@@ -1,6 +1,6 @@
 <?php
 
-namespace Nepicsoft\Osync;
+namespace Prolaxu\Osync;
 
 final class SyncProtocol
 {

@@ -1,13 +1,13 @@
 <?php
 
-namespace Nepicsoft\Osync;
+namespace Prolaxu\Osync;
 
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\Validation\Factory as ValidationFactory;
 use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\ServiceProvider;
-use Nepicsoft\Osync\Console\PruneCommand;
-use Nepicsoft\Osync\Contracts\SyncCollection;
+use Prolaxu\Osync\Console\PruneCommand;
+use Prolaxu\Osync\Contracts\SyncCollection;
 
 final class OsyncServiceProvider extends ServiceProvider
 {

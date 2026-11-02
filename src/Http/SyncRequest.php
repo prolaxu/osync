@@ -1,14 +1,14 @@
 <?php
 
-namespace Nepicsoft\Osync\Http;
+namespace Prolaxu\Osync\Http;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\ValidationException;
-use Nepicsoft\Osync\Data\Change;
-use Nepicsoft\Osync\Data\CollectionPush;
-use Nepicsoft\Osync\Enums\Operation;
-use Nepicsoft\Osync\Hlc;
-use Nepicsoft\Osync\SyncProtocol;
+use Prolaxu\Osync\Data\Change;
+use Prolaxu\Osync\Data\CollectionPush;
+use Prolaxu\Osync\Enums\Operation;
+use Prolaxu\Osync\Hlc;
+use Prolaxu\Osync\SyncProtocol;
 
 /**
  * The sync envelope. Only the top level goes through Laravel's validator; the

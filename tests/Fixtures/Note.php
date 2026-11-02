@@ -1,11 +1,11 @@
 <?php
 
-namespace Nepicsoft\Osync\Tests\Fixtures;
+namespace Prolaxu\Osync\Tests\Fixtures;
 
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Nepicsoft\Osync\Concerns\Syncable;
+use Prolaxu\Osync\Concerns\Syncable;
 
 final class Note extends Model
 {

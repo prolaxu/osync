@@ -1,9 +1,9 @@
 <?php
 
-namespace Nepicsoft\Osync\Tests\Fixtures;
+namespace Prolaxu\Osync\Tests\Fixtures;
 
 use Illuminate\Database\Eloquent\Model;
-use Nepicsoft\Osync\Concerns\Syncable;
+use Prolaxu\Osync\Concerns\Syncable;
 
 /** Owned through user_id rather than a scope column, as most apps store it. */
 final class Card extends Model

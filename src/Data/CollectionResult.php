@@ -1,6 +1,6 @@
 <?php
 
-namespace Nepicsoft\Osync\Data;
+namespace Prolaxu\Osync\Data;
 
 /** The server's answer for one collection; `rejected` is left out when empty. */
 final readonly class CollectionResult

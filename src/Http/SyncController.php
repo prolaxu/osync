@@ -1,14 +1,14 @@
 <?php
 
-namespace Nepicsoft\Osync\Http;
+namespace Prolaxu\Osync\Http;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
-use Nepicsoft\Osync\Data\CollectionResult;
-use Nepicsoft\Osync\Exceptions\ScopeDenied;
-use Nepicsoft\Osync\Exceptions\UnknownCollection;
-use Nepicsoft\Osync\SyncEngine;
-use Nepicsoft\Osync\SyncProtocol;
+use Prolaxu\Osync\Data\CollectionResult;
+use Prolaxu\Osync\Exceptions\ScopeDenied;
+use Prolaxu\Osync\Exceptions\UnknownCollection;
+use Prolaxu\Osync\SyncEngine;
+use Prolaxu\Osync\SyncProtocol;
 
 final class SyncController
 {

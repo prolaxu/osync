@@ -1,9 +1,9 @@
 <?php
 
-namespace Nepicsoft\Osync\Tests\Fixtures;
+namespace Prolaxu\Osync\Tests\Fixtures;
 
 use Illuminate\Database\Eloquent\Model;
-use Nepicsoft\Osync\Concerns\Syncable;
+use Prolaxu\Osync\Concerns\Syncable;
 
 final class Mantra extends Model
 {

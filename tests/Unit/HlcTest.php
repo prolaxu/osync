@@ -1,6 +1,6 @@
 <?php
 
-use Nepicsoft\Osync\Hlc;
+use Prolaxu\Osync\Hlc;
 
 it('round-trips through its string form', function () {
     $hlc = new Hlc(1_730_000_000_123, 7, 'phone-a');

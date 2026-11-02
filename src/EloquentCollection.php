@@ -1,15 +1,15 @@
 <?php
 
-namespace Nepicsoft\Osync;
+namespace Prolaxu\Osync;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
-use Nepicsoft\Osync\Concerns\Syncable;
-use Nepicsoft\Osync\Contracts\SyncCollection;
-use Nepicsoft\Osync\Data\Change;
-use Nepicsoft\Osync\Enums\Operation;
+use Prolaxu\Osync\Concerns\Syncable;
+use Prolaxu\Osync\Contracts\SyncCollection;
+use Prolaxu\Osync\Data\Change;
+use Prolaxu\Osync\Enums\Operation;
 
 /**
  * A collection backed by one Eloquent model that uses [Syncable].

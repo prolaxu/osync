@@ -1,5 +1,5 @@
 {
-    "name": "nepicsoft/osync",
+    "name": "prolaxu/osync",
     "description": "Offline-first, two-way sync between a Laravel server and on-device databases: a per-scope change journal, hybrid logical clocks and cursor pulls.",
     "type": "library",
     "license": "MIT",
@@ -19,19 +19,19 @@
     },
     "autoload": {
         "psr-4": {
-            "Nepicsoft\\Osync\\": "src/"
+            "Prolaxu\\Osync\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Nepicsoft\\Osync\\Tests\\": "tests/",
+            "Prolaxu\\Osync\\Tests\\": "tests/",
             "Workbench\\App\\": "workbench/app/"
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "Nepicsoft\\Osync\\OsyncServiceProvider"
+                "Prolaxu\\Osync\\OsyncServiceProvider"
             ]
         }
     },

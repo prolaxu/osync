@@ -1,8 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Nepicsoft\Osync\Http\Compression;
-use Nepicsoft\Osync\Http\SyncController;
+use Prolaxu\Osync\Http\Compression;
+use Prolaxu\Osync\Http\SyncController;
 
 Route::post(config('osync.route.uri'), SyncController::class)
     ->middleware([

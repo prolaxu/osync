@@ -1,9 +1,9 @@
 <?php
 
-namespace Nepicsoft\Osync\Data;
+namespace Prolaxu\Osync\Data;
 
-use Nepicsoft\Osync\Enums\Operation;
-use Nepicsoft\Osync\Hlc;
+use Prolaxu\Osync\Enums\Operation;
+use Prolaxu\Osync\Hlc;
 
 /** One write to one record: what the client pushes and what a pull returns. */
 final readonly class Change

@@ -1,6 +1,6 @@
 <?php
 
-namespace Nepicsoft\Osync\Http;
+namespace Prolaxu\Osync\Http;
 
 use Closure;
 use Illuminate\Http\Request;

@@ -1,6 +1,6 @@
 <?php
 
-namespace Nepicsoft\Osync\Tests\Fixtures;
+namespace Prolaxu\Osync\Tests\Fixtures;
 
 use Illuminate\Foundation\Auth\User as Authenticatable;
 

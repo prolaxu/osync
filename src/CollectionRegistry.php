@@ -1,9 +1,9 @@
 <?php
 
-namespace Nepicsoft\Osync;
+namespace Prolaxu\Osync;
 
-use Nepicsoft\Osync\Contracts\SyncCollection;
-use Nepicsoft\Osync\Exceptions\UnknownCollection;
+use Prolaxu\Osync\Contracts\SyncCollection;
+use Prolaxu\Osync\Exceptions\UnknownCollection;
 
 final class CollectionRegistry
 {

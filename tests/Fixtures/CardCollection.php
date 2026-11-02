@@ -1,11 +1,11 @@
 <?php
 
-namespace Nepicsoft\Osync\Tests\Fixtures;
+namespace Prolaxu\Osync\Tests\Fixtures;
 
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Nepicsoft\Osync\EloquentCollection;
+use Prolaxu\Osync\EloquentCollection;
 
 final class CardCollection extends EloquentCollection
 {

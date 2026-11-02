@@ -1,10 +1,10 @@
 <?php
 
-namespace Nepicsoft\Osync\Console;
+namespace Prolaxu\Osync\Console;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
-use Nepicsoft\Osync\Journal;
+use Prolaxu\Osync\Journal;
 
 final class PruneCommand extends Command
 {

@@ -1,5 +1,5 @@
 <?php
 
-use Nepicsoft\Osync\Tests\TestCase;
+use Prolaxu\Osync\Tests\TestCase;
 
 uses(TestCase::class)->in('Feature', 'Unit');

@@ -1,8 +1,8 @@
 <?php
 
-namespace Nepicsoft\Osync\Data;
+namespace Prolaxu\Osync\Data;
 
-use Nepicsoft\Osync\Enums\RejectionReason;
+use Prolaxu\Osync\Enums\RejectionReason;
 
 final readonly class Rejection
 {

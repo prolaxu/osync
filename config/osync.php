@@ -2,7 +2,7 @@
 
 return [
     // The collections devices may sync: classes implementing
-    // Nepicsoft\Osync\Contracts\SyncCollection.
+    // Prolaxu\Osync\Contracts\SyncCollection.
     'collections' => [],
 
     'route' => [

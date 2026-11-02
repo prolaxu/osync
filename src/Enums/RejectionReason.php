@@ -1,6 +1,6 @@
 <?php
 
-namespace Nepicsoft\Osync\Enums;
+namespace Prolaxu\Osync\Enums;
 
 enum RejectionReason: string
 {

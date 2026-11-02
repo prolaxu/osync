@@ -10,7 +10,7 @@ Server, in the Laravel app's `composer.json`:
 
 ```json
 "repositories": [{ "type": "vcs", "url": "https://github.com/prolaxu/osync" }],
-"require": { "nepicsoft/osync": "^0.4" }
+"require": { "prolaxu/osync": "^0.4" }
 ```
 
 Then `php artisan migrate`.

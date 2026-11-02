@@ -1,14 +1,14 @@
 <?php
 
-namespace Nepicsoft\Osync\Tests;
+namespace Prolaxu\Osync\Tests;
 
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
-use Nepicsoft\Osync\OsyncServiceProvider;
-use Nepicsoft\Osync\Tests\Fixtures\MantraCollection;
-use Nepicsoft\Osync\Tests\Fixtures\NoteCollection;
 use Orchestra\Testbench\TestCase as Orchestra;
+use Prolaxu\Osync\OsyncServiceProvider;
+use Prolaxu\Osync\Tests\Fixtures\MantraCollection;
+use Prolaxu\Osync\Tests\Fixtures\NoteCollection;
 
 abstract class TestCase extends Orchestra
 {

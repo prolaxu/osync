@@ -3,12 +3,12 @@
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
-use Nepicsoft\Osync\CollectionRegistry;
-use Nepicsoft\Osync\Tests\Fixtures\BulkNoteCollection;
-use Nepicsoft\Osync\Tests\Fixtures\Card;
-use Nepicsoft\Osync\Tests\Fixtures\Mantra;
-use Nepicsoft\Osync\Tests\Fixtures\Note;
-use Nepicsoft\Osync\Tests\Fixtures\User;
+use Prolaxu\Osync\CollectionRegistry;
+use Prolaxu\Osync\Tests\Fixtures\BulkNoteCollection;
+use Prolaxu\Osync\Tests\Fixtures\Card;
+use Prolaxu\Osync\Tests\Fixtures\Mantra;
+use Prolaxu\Osync\Tests\Fixtures\Note;
+use Prolaxu\Osync\Tests\Fixtures\User;
 
 /** @param array<string, array<string, mixed>> $collections */
 function syncAs(User $user, array $collections): TestResponse

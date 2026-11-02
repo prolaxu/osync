@@ -1,5 +1,5 @@
 providers:
-  - Nepicsoft\Osync\OsyncServiceProvider
+  - Prolaxu\Osync\OsyncServiceProvider
   - Workbench\App\E2eServiceProvider
 
 env:

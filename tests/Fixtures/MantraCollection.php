@@ -1,9 +1,9 @@
 <?php
 
-namespace Nepicsoft\Osync\Tests\Fixtures;
+namespace Prolaxu\Osync\Tests\Fixtures;
 
 use Illuminate\Contracts\Auth\Authenticatable;
-use Nepicsoft\Osync\EloquentCollection;
+use Prolaxu\Osync\EloquentCollection;
 
 final class MantraCollection extends EloquentCollection
 {

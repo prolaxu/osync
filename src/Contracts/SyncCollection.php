@@ -1,9 +1,9 @@
 <?php
 
-namespace Nepicsoft\Osync\Contracts;
+namespace Prolaxu\Osync\Contracts;
 
 use Illuminate\Contracts\Auth\Authenticatable;
-use Nepicsoft\Osync\Data\Change;
+use Prolaxu\Osync\Data\Change;
 
 /**
  * A set of records that syncs as one stream, e.g. a user's saved charts or the
