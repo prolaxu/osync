@@ -1,11 +1,8 @@
 # osync
 
-**osync**: offline-first, two-way sync between on-device SQLite and a Laravel server.
+**osync** for Laravel (12/13, PHP 8.3+): the server half of offline-first, two-way sync with on-device databases.
 
-| Part | Path | Package |
-|---|---|---|
-| Server | repo root | `nepicsoft/osync` (Laravel 12/13, PHP 8.3+) |
-| Client | `dart/` | `osync` (pure Dart, works in Flutter) |
+The Flutter/Dart client is **[osync-dart](https://github.com/prolaxu/osync-dart)**.
 
 ## Install
 
@@ -17,17 +14,6 @@ Server, in the Laravel app's `composer.json`:
 ```
 
 Then `php artisan migrate`.
-
-Client, in `pubspec.yaml`:
-
-```yaml
-dependencies:
-  osync:
-    git:
-      url: https://github.com/prolaxu/osync
-      path: dart
-      ref: v0.1.0
-```
 
 ## What it does
 
@@ -42,7 +28,7 @@ dependencies:
 - **Validates.** Each collection has Laravel rules, and only validated fields are written. Invalid data comes back with its field errors.
 - **Read-only content.** A collection can be marked read-only for published content (mantras, rashifal) that devices only pull.
 - **Small journal.** Only a record's latest change is kept, so the journal stays about as large as the data, and a pull from cursor 0 is a full snapshot.
-- **Background syncing.** `AutoSync` syncs shortly after local writes (batched), on a timer and on demand. It backs off exponentially on failure and stops on 401.
+- **Works with osync-dart.** The client keeps a SQLite store with an outbox and handles background syncing; see [osync-dart](https://github.com/prolaxu/osync-dart).
 
 ## Protocol (v1)
 
@@ -118,38 +104,16 @@ Schedule `osync:prune` daily.
 
 Mass `update()`/`delete()` on the query builder fire no model events and are **not** journalled. Change records through models, or call `Journal::recordServerChange()`.
 
-## Client
-
-```dart
-final sync = await SyncClient.open(
-  store: SqliteStore.open('${docs.path}/sync.db'),
-  collections: ['charts', 'mantras'],
-  transport: HttpSyncTransport(
-    Uri.parse('https://api.astrobaje.com/api/v1/sync'),
-    headers: () async => {'Authorization': 'Bearer ${await token()}'},
-  ),
-);
-
-await sync.put('charts', chart.id, chart.toJson());   // offline-safe
-final charts = await sync.all('charts');
-sync.watch('charts').listen((change) => refresh());   // local and remote changes
-
-final auto = AutoSync(sync)..start();                 // debounce + interval + backoff
-// on app resume / connectivity regained / push notification:
-auto.syncNow();
-```
-
-To sync into another database (Isar, Drift), implement `LocalStore`.
-
 ## Tests
 
 ```sh
 composer install && vendor/bin/pest                     # 21 tests
-cd dart && dart pub get && dart test                    # 26 tests (e2e skipped)
+```
 
-# end to end, Dart client against the real Laravel package:
+`workbench/` is a throwaway server for osync-dart's end-to-end tests: the bearer token is the user's name, and two routes edit records the way a website would.
+
+```sh
 touch workbench/e2e.sqlite && vendor/bin/testbench serve --port=8787
-cd dart && RLS_E2E_URL=http://127.0.0.1:8787 dart test -t e2e --run-skipped   # 4 tests
 ```
 
 ## Using it in AstroBaje
