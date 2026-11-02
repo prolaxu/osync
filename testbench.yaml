@@ -1,0 +1,6 @@
+providers:
+  - Nepicsoft\Osync\OsyncServiceProvider
+  - Workbench\App\E2eServiceProvider
+
+env:
+  - APP_KEY=base64:NzQ0ZmQ5ZTM5ZjQ1NGE2ZGIxNmE0ZjM0YjU2ZDc4OTA=
