@@ -12,6 +12,9 @@ use Nepicsoft\Osync\Journal;
  * Journals every save and delete of the model, so edits made on the server —
  * the website, the admin panel, a job — reach devices like any other change.
  *
+ * A save that changes nothing devices see (a regenerated cache column, say)
+ * is not journalled, so devices download nothing for it.
+ *
  * Mass updates and deletes through the query builder fire no model events and
  * are not journalled; go through models, or record the change yourself with
  * [Journal::recordServerChange].
@@ -43,6 +46,17 @@ trait Syncable
         return 'sync_id';
     }
 
+    /**
+     * The scope this record syncs in. Override when ownership lives in another
+     * column, e.g. `'user:'.$this->user_id`.
+     */
+    public function syncScope(): ?string
+    {
+        $scope = $this->getAttribute($this->syncScopeColumn());
+
+        return blank($scope) ? null : (string) $scope;
+    }
+
     /** @return array<string, mixed> what devices receive for this record */
     public function toSyncPayload(): array
     {
@@ -56,20 +70,59 @@ trait Syncable
         ]);
     }
 
+    /**
+     * The columns whose change devices must hear about. Defaults to every
+     * column except the bookkeeping ones; narrow it when [toSyncPayload] reads
+     * only some.
+     *
+     * @return list<string>|null null for every column
+     */
+    public function syncedColumns(): ?array
+    {
+        return null;
+    }
+
     private function journalSyncChange(Operation $op): void
     {
         $journal = Container::getInstance()->make(Journal::class);
-        $scope = $this->getAttribute($this->syncScopeColumn());
-        if ($journal->isQuiet() || blank($scope)) {
+        $scope = $this->syncScope();
+        if ($journal->isQuiet() || $scope === null) {
+            return;
+        }
+        if ($op === Operation::Upsert && ! $this->changedForDevices()) {
             return;
         }
 
         $journal->recordServerChange(
-            scope: (string) $scope,
+            scope: $scope,
             collection: $this->syncCollection(),
             recordId: (string) $this->getAttribute($this->syncIdColumn()),
             op: $op,
             data: $op === Operation::Upsert ? $this->toSyncPayload() : null,
         );
+    }
+
+    private function changedForDevices(): bool
+    {
+        if ($this->wasRecentlyCreated) {
+            return true;
+        }
+        $changed = array_keys($this->getChanges());
+        if (in_array('deleted_at', $changed, true)) {
+            return true;
+        }
+        $ignored = [$this->getUpdatedAtColumn(), $this->getCreatedAtColumn()];
+        $watched = $this->syncedColumns();
+
+        foreach ($changed as $column) {
+            if (in_array($column, $ignored, true)) {
+                continue;
+            }
+            if ($watched === null || in_array($column, $watched, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

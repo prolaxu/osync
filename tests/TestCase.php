@@ -22,7 +22,7 @@ abstract class TestCase extends Orchestra
     protected function defineEnvironment($app): void
     {
         $app['config']->set('database.default', 'testing');
-        $app['config']->set('osync.collections', [NoteCollection::class, MantraCollection::class]);
+        $app['config']->set('osync.collections', [NoteCollection::class, MantraCollection::class, Fixtures\CardCollection::class]);
         $app['config']->set('osync.route.middleware', ['api', 'auth']);
         $app['config']->set('auth.providers.users.model', Fixtures\User::class);
     }
@@ -48,6 +48,14 @@ abstract class TestCase extends Orchestra
             $table->string('sync_scope', 191)->default('global');
             $table->string('sync_id', 191);
             $table->string('text');
+            $table->timestamps();
+        });
+        Schema::create('cards', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('user_id');
+            $table->string('client_id', 191)->nullable();
+            $table->string('label');
+            $table->string('cache')->nullable();
             $table->timestamps();
         });
     }

@@ -19,7 +19,8 @@ use Nepicsoft\Osync\Enums\Operation;
  * the wire shape differs from the columns.
  *
  * Writes load every record of a batch in one query, then save each model, so
- * casts, mutators and model events behave as usual. Set [bulk] for tables
+ * casts, mutators and model events behave as usual; a field the model changed
+ * on save (a mutator, a `saving` hook) is sent back to devices. Set [bulk] for tables
  * whose payload maps straight onto columns: a batch then lands in a few
  * statements, skipping models, and needs a unique index on (scope, id).
  */
@@ -40,9 +41,34 @@ abstract class EloquentCollection implements SyncCollection
         return true;
     }
 
-    public function apply(string $scope, array $changes): void
+    public function apply(string $scope, array $changes): array
     {
-        $this->bulk ? $this->applyBulk($scope, $changes) : $this->applyModels($scope, $changes);
+        if ($this->bulk) {
+            $this->applyBulk($scope, $changes);
+
+            return [];
+        }
+
+        return $this->applyModels($scope, $changes);
+    }
+
+    /**
+     * Limits [query] to the records of [scope]. Override, with [assignScope],
+     * when ownership lives in another column — e.g. scope "user:42" stored as
+     * user_id 42.
+     *
+     * @param  Builder<Model>  $query
+     * @return Builder<Model>
+     */
+    protected function scopeQuery(Builder $query, string $scope): Builder
+    {
+        return $query->where($this->instance()->syncScopeColumn(), $scope);
+    }
+
+    /** Marks [model] as belonging to [scope]. */
+    protected function assignScope(Model $model, string $scope): void
+    {
+        $model->setAttribute($this->instance()->syncScopeColumn(), $scope);
     }
 
     /**
@@ -56,8 +82,11 @@ abstract class EloquentCollection implements SyncCollection
         return $data;
     }
 
-    /** @param  list<Change>  $changes */
-    private function applyModels(string $scope, array $changes): void
+    /**
+     * @param  list<Change>  $changes
+     * @return array<string, array<string, mixed>>
+     */
+    private function applyModels(string $scope, array $changes): array
     {
         $template = $this->instance();
         $idColumn = $template->syncIdColumn();
@@ -66,6 +95,7 @@ abstract class EloquentCollection implements SyncCollection
             ->get()
             ->keyBy($idColumn);
 
+        $stored = [];
         foreach ($changes as $change) {
             /** @var (Model&Syncable)|null $model */
             $model = $existing->get($change->recordId);
@@ -78,13 +108,39 @@ abstract class EloquentCollection implements SyncCollection
 
             $model ??= $template->newInstance();
             $model->fill($this->attributes($change->data ?? []));
-            $model->setAttribute($template->syncScopeColumn(), $scope);
+            $this->assignScope($model, $scope);
             $model->setAttribute($idColumn, $change->recordId);
             if ($this->usesSoftDeletes() && $model->exists && $model->trashed()) {
                 $model->setAttribute($model->getDeletedAtColumn(), null);
             }
             $model->save();
+
+            $payload = $model->toSyncPayload();
+            if ($this->differs($change->data ?? [], $payload)) {
+                $stored[$change->recordId] = $payload;
+            }
         }
+
+        return $stored;
+    }
+
+    /**
+     * Whether the stored payload disagrees with what was pushed on any field
+     * the push named. Loose on purpose: 27.7 and "27.7" are the same value
+     * read back through a cast.
+     *
+     * @param  array<string, mixed>  $pushed
+     * @param  array<string, mixed>  $stored
+     */
+    private function differs(array $pushed, array $stored): bool
+    {
+        foreach ($pushed as $key => $value) {
+            if (array_key_exists($key, $stored) && $stored[$key] != $value) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @param  list<Change>  $changes */
@@ -155,8 +211,7 @@ abstract class EloquentCollection implements SyncCollection
     /** @return Builder<Model> */
     private function query(string $scope): Builder
     {
-        $model = $this->instance();
-        $query = $model->newQuery()->where($model->syncScopeColumn(), $scope);
+        $query = $this->scopeQuery($this->instance()->newQuery(), $scope);
 
         return $this->usesSoftDeletes() ? $query->withTrashed() : $query;
     }

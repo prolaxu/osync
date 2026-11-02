@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Nepicsoft\Osync\CollectionRegistry;
 use Nepicsoft\Osync\Tests\Fixtures\BulkNoteCollection;
+use Nepicsoft\Osync\Tests\Fixtures\Card;
 use Nepicsoft\Osync\Tests\Fixtures\Mantra;
 use Nepicsoft\Osync\Tests\Fixtures\Note;
 use Nepicsoft\Osync\Tests\Fixtures\User;
@@ -322,4 +323,38 @@ it('refuses a gzip body that is not gzip', function () {
         'HTTP_CONTENT_ENCODING' => 'gzip',
         'HTTP_ACCEPT' => 'application/json',
     ], content: 'not gzip')->assertStatus(400);
+});
+
+it('sends back what the server stored when it differs from the push, to the sender too', function () {
+    $sync = fn (int $cursor, array $changes = []) => $this->actingAs($this->user)->postJson('/api/sync', [
+        'protocol' => 1,
+        'node' => 'phone-a',
+        'collections' => ['notes' => ['cursor' => $cursor, 'changes' => $changes]],
+    ])->json('collections.notes');
+
+    $result = $sync(0, [upsert('n1', ['title' => '  Spaced   out  '], stamp(1000))]);
+
+    expect(Note::value('title'))->toBe('Spaced out')
+        ->and($result['changes'])->toHaveCount(1)
+        ->and($result['changes'][0]['data']['title'])->toBe('Spaced out')
+        ->and($result['changes'][0]['hlc'])->toEndWith(':server')
+        ->and(strcmp($result['changes'][0]['hlc'], stamp(1000)))->toBeGreaterThan(0);
+
+    $clean = $sync($result['cursor'], [upsert('n2', ['title' => 'Already clean'], stamp(1100))]);
+    expect($clean['changes'])->toBe([]);
+});
+
+it('syncs a model owned through user_id, and skips saves devices cannot see', function () {
+    syncAs($this->user, ['cards' => ['changes' => [upsert('c1', ['label' => 'Mine'], stamp(1000))]]])->assertOk();
+    $card = Card::where('client_id', 'c1')->first();
+    expect($card->user_id)->toBe($this->user->id);
+
+    $card->update(['cache' => 'recomputed']);
+    expect(syncAs($this->user, ['cards' => ['cursor' => 1]])->json('collections.cards.changes'))->toBe([]);
+
+    $card->update(['label' => 'Renamed on the web']);
+    expect(syncAs($this->user, ['cards' => ['cursor' => 1]])->json('collections.cards.changes.0.data'))->toBe(['label' => 'Renamed on the web']);
+
+    $other = User::create(['name' => 'Sita']);
+    expect(syncAs($other, ['cards' => ['cursor' => 0]])->json('collections.cards.changes'))->toBe([]);
 });

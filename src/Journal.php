@@ -44,8 +44,12 @@ final class Journal
      * A change equal to what the record holds is a resend and is skipped.
      * Returns, by record id, the newer change each losing record already held.
      *
+     * When [apply] reports that it stored something other than what was
+     * pushed, that payload is journalled under a fresh server stamp, so every
+     * device — the sender too — converges on what the server holds.
+     *
      * @param  list<Change>  $changes
-     * @param  Closure(list<Change>): void  $apply
+     * @param  Closure(list<Change>): array<string, array<string, mixed>>  $apply
      * @return array<string, Change>
      */
     public function commitMany(string $scope, string $collection, array $changes, Closure $apply): array
@@ -75,7 +79,14 @@ final class Journal
 
             if ($winners !== []) {
                 $winners = array_values($winners);
-                $this->quietly(fn () => $apply($winners));
+                $stored = $this->quietly(fn (): array => $apply($winners));
+                $now = Carbon::now()->getTimestampMs();
+                $winners = array_map(
+                    fn (Change $c): Change => isset($stored[$c->recordId])
+                        ? new Change($c->recordId, Operation::Upsert, $stored[$c->recordId], Hlc::next($this->node, $now, $c->hlc))
+                        : $c,
+                    $winners,
+                );
                 $this->writeMany($scope, $collection, $winners, $version);
             }
 

@@ -31,7 +31,12 @@ interface SyncCollection
      * Writes accepted changes into the app's tables: at most one per record,
      * upserts carrying validated data, all inside the journal's transaction.
      *
+     * Returns the payload actually stored for any record the app changed on
+     * the way in (a mutator, a `saving` hook); those reach every device, the
+     * sender included, instead of what was pushed.
+     *
      * @param  list<Change>  $changes
+     * @return array<string, array<string, mixed>> by record id
      */
-    public function apply(string $scope, array $changes): void;
+    public function apply(string $scope, array $changes): array;
 }

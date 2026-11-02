@@ -10,7 +10,7 @@ Server, in the Laravel app's `composer.json`:
 
 ```json
 "repositories": [{ "type": "vcs", "url": "https://github.com/prolaxu/osync" }],
-"require": { "nepicsoft/osync": "^0.3" }
+"require": { "nepicsoft/osync": "^0.4" }
 ```
 
 Then `php artisan migrate`.
@@ -121,9 +121,31 @@ final class ChartCollection extends EloquentCollection
 }
 ```
 
+**Ownership in another column.** Most apps store `user_id`, not a scope string. Map between them on both sides:
+
+```php
+// on the model
+public function syncIdColumn(): string { return 'client_id'; }
+public function syncScope(): ?string { return $this->user_id ? 'user:'.$this->user_id : null; }
+
+// on the EloquentCollection
+protected function scopeQuery(Builder $query, string $scope): Builder
+{
+    return $query->where('user_id', (int) substr($scope, 5));
+}
+protected function assignScope(Model $model, string $scope): void
+{
+    $model->user_id = (int) substr($scope, 5);
+}
+```
+
+**Only journal what devices see.** A save that changes no synced column (a regenerated prediction, a cache) writes nothing to the journal. List the columns with `syncedColumns()` when `toSyncPayload()` reads only some of them.
+
+**The server's corrections reach every device.** If a mutator or `saving` hook stores something other than what was pushed (for example, correcting a pre-1986 Nepal birth from +5:45 to +5:30), the stored payload is journalled under a fresh server stamp. Every device then gets it, including the one that pushed.
+
 Content devices only read: override `writable()` to return `false` and set `scope()` to `'global'`.
 For tables whose payload is plain columns, add `protected bool $bulk = true;` (see Efficiency).
-A custom `SyncCollection` gets each push as one `apply($scope, $changes)` call.
+A custom `SyncCollection` gets each push as one `apply($scope, $changes)` call and returns any payloads it stored differently.
 Schedule `osync:prune` daily.
 
 Mass `update()`/`delete()` on the query builder fire no model events and are **not** journalled. Change records through models, or call `Journal::recordServerChange()`.
@@ -131,7 +153,7 @@ Mass `update()`/`delete()` on the query builder fire no model events and are **n
 ## Tests
 
 ```sh
-composer install && vendor/bin/pest                     # 27 tests
+composer install && vendor/bin/pest                     # 29 tests
 vendor/bin/pest --group=bench                           # the numbers above
 ```
 
@@ -149,3 +171,7 @@ It can replace both hand-rolled syncs:
 - **`ContentSyncService` (mantras, sapanafal, home layout, rashifal).** It downloads whole versioned snapshots. As read-only `global` collections, one edited mantra syncs as one change.
 
 Migration steps: add `sync_scope`/`sync_id` columns (back-filled from `user_id`/`client_id`), keep the old `/sync` endpoint until the app version using this package is the minimum supported one, and on first launch seed the outbox from the existing local Isar data.
+
+## License
+
+MIT
